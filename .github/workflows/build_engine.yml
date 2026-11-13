@@ -44,7 +44,7 @@ jobs:
         run: |
           mkdir -p artifacts
           cd godot/bin
-          zip -r ../../artifacts/igodot_ios_release.zip . -i "*ios*"
+          zip -r ../../artifacts/igodot_ios_release.zip .
 
       - uses: actions/upload-artifact@v4
         with:
@@ -73,8 +73,8 @@ jobs:
       - name: Compile Stripped Windows Template
         working-directory: godot
         run: |
-          scons platform=windows target=template_release arch=x86_64 profile=custom.py -j4
-          Move-Item bin/godot.windows.template_release.x86_64.exe bin/igodot_windows_release_x86_64.exe
+          scons platform=windows target=template_release arch=x86_64 profile=custom.py d3d12=no accesskit=no -j4
+          Get-ChildItem bin/*.exe | Select-Object -First 1 | Move-Item -Destination bin/igodot_windows_release_x86_64.exe
 
       - uses: actions/upload-artifact@v4
         with:
@@ -87,17 +87,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 17 & Android SDK
+      - name: Set up JDK 17 & SCons
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - run: pip install scons
 
-      - name: Install NDK & SCons
+      - name: Configure Pre-Installed Android SDK & NDK
         run: |
-          sdkmanager "ndk;27.2.12479018" "build-tools;35.0.0" "platforms;android-35"
-          pip install scons
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;27.2.12479018" "build-tools;35.0.0" "platforms;android-35"
 
       - name: Clone Godot Source
         run: |
