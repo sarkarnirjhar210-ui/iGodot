@@ -1,0 +1,137 @@
+name: Build Stripped iGodot 4.7
+
+on:
+  push:
+    paths:
+      - 'custom.py'
+      - '.github/workflows/build_engine.yml'
+  workflow_dispatch:
+    inputs:
+      godot_branch:
+        description: 'Godot Branch or Tag'
+        required: true
+        default: '4.7-stable'
+
+permissions:
+  contents: write
+
+jobs:
+  build-ios:
+    name: iGodot iOS Engine & Template
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python & SCons
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install scons
+
+      - name: Clone Godot Source
+        run: |
+          BRANCH="${{ inputs.godot_branch || '4.7-stable' }}"
+          git clone --depth 1 --branch "$BRANCH" https://github.com/godotengine/godot.git || \
+          git clone --depth 1 https://github.com/godotengine/godot.git
+          cp custom.py godot/custom.py
+
+      - name: Compile Stripped iOS arm64 Library
+        working-directory: godot
+        run: |
+          scons platform=ios target=template_release arch=arm64 profile=custom.py generate_bundle=yes -j$(sysctl -n hw.ncpu)
+
+      - name: Package iGodot iOS Template
+        run: |
+          mkdir -p artifacts
+          cd godot/bin
+          zip -r ../../artifacts/igodot_ios_release.zip . -i "*ios*"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-build
+          path: artifacts/igodot_ios_release.zip
+
+  build-windows:
+    name: iGodot Windows x86_64 Template
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python & SCons
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install scons
+
+      - name: Clone Godot Source
+        run: |
+          $branch = "${{ inputs.godot_branch }}"
+          if ([string]::IsNullOrEmpty($branch)) { $branch = "4.7-stable" }
+          git clone --depth 1 --branch $branch https://github.com/godotengine/godot.git ; if ($LASTEXITCODE -ne 0) { git clone --depth 1 https://github.com/godotengine/godot.git }
+          Copy-Item custom.py godot/custom.py
+
+      - name: Compile Stripped Windows Template
+        working-directory: godot
+        run: |
+          scons platform=windows target=template_release arch=x86_64 profile=custom.py -j4
+          Move-Item bin/godot.windows.template_release.x86_64.exe bin/igodot_windows_release_x86_64.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: godot/bin/igodot_windows_release_x86_64.exe
+
+  build-android:
+    name: iGodot Android arm64 Template
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17 & Android SDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+
+      - name: Install NDK & SCons
+        run: |
+          sdkmanager "ndk;27.2.12479018" "build-tools;35.0.0" "platforms;android-35"
+          pip install scons
+
+      - name: Clone Godot Source
+        run: |
+          BRANCH="${{ inputs.godot_branch || '4.7-stable' }}"
+          git clone --depth 1 --branch "$BRANCH" https://github.com/godotengine/godot.git || \
+          git clone --depth 1 https://github.com/godotengine/godot.git
+          cp custom.py godot/custom.py
+
+      - name: Compile Stripped Android APK Template
+        working-directory: godot
+        env:
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_HOME }}
+        run: |
+          scons platform=android target=template_release arch=arm64 profile=custom.py generate_apk=yes -j$(nproc)
+          mv bin/android_release.apk bin/igodot_android_release_arm64.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-build
+          path: godot/bin/igodot_android_release_arm64.apk
+
+  publish-release:
+    name: Publish iGodot Engine & Templates
+    needs: [build-ios, build-windows, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release_files
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v4.7-igodot
+          name: "iGodot 4.7 Stripped Engine & Export Templates"
+          files: release_files/*
