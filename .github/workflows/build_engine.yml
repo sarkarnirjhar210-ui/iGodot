@@ -111,7 +111,13 @@ jobs:
         env:
           ANDROID_SDK_ROOT: ${{ env.ANDROID_HOME }}
         run: |
+          python misc/scripts/install_swappy_android.py
           scons platform=android target=template_release arch=arm64 profile=custom.py generate_apk=yes -j$(nproc)
+          if [ ! -f bin/android_release.apk ]; then
+            cd platform/android/java
+            ./gradlew generateGodotTemplates
+            cd ../../..
+          fi
           mv bin/android_release.apk bin/igodot_android_release_arm64.apk
 
       - uses: actions/upload-artifact@v4
