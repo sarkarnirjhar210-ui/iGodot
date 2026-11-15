@@ -141,3 +141,17 @@ jobs:
           tag_name: v4.7-igodot
           name: "iGodot 4.7 Stripped Engine & Export Templates"
           files: release_files/*
+          
+  patch-swiftpm-62:
+    name: Create Swift 6.2 Playground Package Branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone & Downgrade Tools Version to 6.2
+        run: |
+          git clone --branch binary https://github.com/migueldeicaza/SwiftGodotKit.git sg_kit
+          cd sg_kit
+          sed -i 's/swift-tools-version: 6.3/swift-tools-version: 6.2/g' Package.swift
+          git config user.name "iGodot Builder"
+          git config user.email "builder@igodot.local"
+          git commit -am "Support iPad Swift Playgrounds 6.2" || true
+          git push --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:refs/heads/swift-6.2
