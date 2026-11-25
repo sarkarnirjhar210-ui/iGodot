@@ -48,30 +48,28 @@ jobs:
                       break
               return targets
 
-          bin_targets = extract_binary_targets(bin_pkg)
-          # Skip any binaryTarget whose name already exists in SwiftGodotKit
-          filtered_targets = []
-          for bt in bin_targets:
-              m = re.search(r'name\s*:\s*"([^"]+)"', bt)
-              if m and f'name: "{m.group(1)}"' in kit:
-                  continue
-              filtered_targets.append(bt)
-
-          # 1. Downgrade swift-tools-version to 6.0 (supports swiftLanguageModes + iPad 6.2)
+          # 1. Downgrade swift-tools-version to 6.0 (supports PackageDescription 6 + iPad 6.2)
           kit = re.sub(r"//\s*swift-tools-version:.*", "// swift-tools-version: 6.0", kit, count=1)
-
 
           # 2. Remove remote SwiftGodot / SwiftGodotBinary package dependencies
           kit = re.sub(r'\.package\s*\([^)]*SwiftGodot[^)]*\)\s*,?', '', kit)
 
-          # 3. Point SwiftGodotKit's target dependency to the merged local binaryTarget
+          # 3. Point SwiftGodotKit's target dependency to the local binaryTarget
           kit = re.sub(r'\.product\s*\(\s*name:\s*"SwiftGodot"\s*,\s*package:\s*"[^"]+"\s*\)', '"SwiftGodot"', kit)
 
-          # 4. Inject into the LAST `targets: [` (package targets, NOT products targets)
+          # 4. Collect binaryTargets from SwiftGodotBinary (only skip if already defined as a binaryTarget)
+          existing_bin_names = set(re.findall(r'\.binaryTarget\s*\(\s*name\s*:\s*"([^"]+)"', kit))
+          filtered_targets = []
+          for bt in extract_binary_targets(bin_pkg):
+              m = re.search(r'name\s*:\s*"([^"]+)"', bt)
+              if m and m.group(1) in existing_bin_names:
+                  continue
+              filtered_targets.append(bt)
+
+          # 5. Inject into the LAST `targets: [` (package targets)
           matches = list(re.finditer(r'targets\s*:\s*\[', kit))
           if matches and filtered_targets:
-              last_match = matches[-1]
-              insert_pos = last_match.end()
+              insert_pos = matches[-1].end()
               injected = "\n        " + ",\n        ".join(filtered_targets) + ","
               kit = kit[:insert_pos] + injected + kit[insert_pos:]
 
@@ -80,11 +78,10 @@ jobs:
           EOF
 
           cd sg_kit
-          cat Package.swift
-          swift package dump-package > /dev/null
+          swift package describe > /dev/null
           git config user.name "iGodot Builder"
           git config user.email "builder@igodot.local"
           git add Package.swift
-          git commit -m "Fix targets injection for Swift 6.2 Playgrounds" || true
-          git tag -f 6.2.1
-          git push --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" refs/tags/6.2.1
+          git commit -m "Include SwiftGodot binaryTarget for Swift 6.2" || true
+          git tag -f 6.2.2
+          git push --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" refs/tags/6.2.2
