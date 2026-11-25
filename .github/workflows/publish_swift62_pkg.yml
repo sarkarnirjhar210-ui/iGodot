@@ -1,0 +1,78 @@
+name: Publish Swift 6.2 Compatible SwiftGodotKit Tag
+
+on:
+  push:
+    paths:
+      - '.github/workflows/publish_swift62_pkg.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-swift62-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge SwiftGodotKit + SwiftGodotBinary for Swift 6.2
+        run: |
+          git clone --depth 1 --branch binary https://github.com/migueldeicaza/SwiftGodotKit.git sg_kit || \
+          git clone --depth 1 https://github.com/migueldeicaza/SwiftGodotKit.git sg_kit
+          git clone --depth 1 https://github.com/migueldeicaza/SwiftGodotBinary.git sg_bin
+
+          python3 - << 'EOF'
+          import re
+
+          with open("sg_kit/Package.swift", "r") as f:
+              kit = f.read()
+          with open("sg_bin/Package.swift", "r") as f:
+              bin_pkg = f.read()
+
+          # Extract all .binaryTarget(...) blocks safely with balanced parentheses
+          def extract_binary_targets(text):
+              targets = []
+              idx = 0
+              while True:
+                  start = text.find(".binaryTarget(", idx)
+                  if start == -1:
+                      break
+                  depth = 0
+                  for i in range(start, len(text)):
+                      if text[i] == "(":
+                          depth += 1
+                      elif text[i] == ")":
+                          depth -= 1
+                          if depth == 0:
+                              targets.append(text[start:i+1])
+                              idx = i + 1
+                              break
+                  else:
+                      break
+              return targets
+
+          bin_targets = extract_binary_targets(bin_pkg)
+
+          # Downgrade swift-tools-version to 5.9 so iPad Swift Playgrounds 6.2 accepts it
+          kit = re.sub(r"//\s*swift-tools-version:.*", "// swift-tools-version: 5.9", kit, count=1)
+
+          # Remove any remote SwiftGodot / SwiftGodotBinary package dependencies
+          kit = re.sub(r'\.package\s*\([^)]*SwiftGodot[^)]*\)\s*,?', '', kit)
+
+          # Point SwiftGodotKit's target dependency directly to the merged local binaryTarget
+          kit = re.sub(r'\.product\s*\(\s*name:\s*"SwiftGodot"\s*,\s*package:\s*"[^"]+"\s*\)', '"SwiftGodot"', kit)
+
+          # Inject SwiftGodotBinary's .binaryTarget blocks into targets: [
+          if bin_targets:
+              injected = ",\n        ".join(bin_targets) + ",\n        "
+              kit = re.sub(r'(targets\s*:\s*\[\s*)', r'\1' + injected, kit, count=1)
+
+          with open("sg_kit/Package.swift", "w") as f:
+              f.write(kit)
+          EOF
+
+          cd sg_kit
+          git config user.name "iGodot Builder"
+          git config user.email "builder@igodot.local"
+          git add Package.swift
+          git commit -m "Swift 6.2 Playgrounds compatible SwiftGodotKit" || true
+          git tag -f 6.2.0
+          git push --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" refs/tags/6.2.0
