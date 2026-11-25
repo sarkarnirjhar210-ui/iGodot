@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build-swift62-tag:
-    runs-on: ubuntu-latest
+    runs-on: macos-15
     steps:
       - name: Merge SwiftGodotKit + SwiftGodotBinary for Swift 6.2
         run: |
@@ -27,7 +27,6 @@ jobs:
           with open("sg_bin/Package.swift", "r") as f:
               bin_pkg = f.read()
 
-          # Extract all .binaryTarget(...) blocks safely with balanced parentheses
           def extract_binary_targets(text):
               targets = []
               idx = 0
@@ -50,29 +49,41 @@ jobs:
               return targets
 
           bin_targets = extract_binary_targets(bin_pkg)
+          # Skip any binaryTarget whose name already exists in SwiftGodotKit
+          filtered_targets = []
+          for bt in bin_targets:
+              m = re.search(r'name\s*:\s*"([^"]+)"', bt)
+              if m and f'name: "{m.group(1)}"' in kit:
+                  continue
+              filtered_targets.append(bt)
 
-          # Downgrade swift-tools-version to 5.9 so iPad Swift Playgrounds 6.2 accepts it
+          # 1. Downgrade swift-tools-version to 5.9
           kit = re.sub(r"//\s*swift-tools-version:.*", "// swift-tools-version: 5.9", kit, count=1)
 
-          # Remove any remote SwiftGodot / SwiftGodotBinary package dependencies
+          # 2. Remove remote SwiftGodot / SwiftGodotBinary package dependencies
           kit = re.sub(r'\.package\s*\([^)]*SwiftGodot[^)]*\)\s*,?', '', kit)
 
-          # Point SwiftGodotKit's target dependency directly to the merged local binaryTarget
+          # 3. Point SwiftGodotKit's target dependency to the merged local binaryTarget
           kit = re.sub(r'\.product\s*\(\s*name:\s*"SwiftGodot"\s*,\s*package:\s*"[^"]+"\s*\)', '"SwiftGodot"', kit)
 
-          # Inject SwiftGodotBinary's .binaryTarget blocks into targets: [
-          if bin_targets:
-              injected = ",\n        ".join(bin_targets) + ",\n        "
-              kit = re.sub(r'(targets\s*:\s*\[\s*)', r'\1' + injected, kit, count=1)
+          # 4. Inject into the LAST `targets: [` (package targets, NOT products targets)
+          matches = list(re.finditer(r'targets\s*:\s*\[', kit))
+          if matches and filtered_targets:
+              last_match = matches[-1]
+              insert_pos = last_match.end()
+              injected = "\n        " + ",\n        ".join(filtered_targets) + ","
+              kit = kit[:insert_pos] + injected + kit[insert_pos:]
 
           with open("sg_kit/Package.swift", "w") as f:
               f.write(kit)
           EOF
 
           cd sg_kit
+          cat Package.swift
+          swift package dump-package > /dev/null
           git config user.name "iGodot Builder"
           git config user.email "builder@igodot.local"
           git add Package.swift
-          git commit -m "Swift 6.2 Playgrounds compatible SwiftGodotKit" || true
-          git tag -f 6.2.0
-          git push --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" refs/tags/6.2.0
+          git commit -m "Fix targets injection for Swift 6.2 Playgrounds" || true
+          git tag -f 6.2.1
+          git push --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" refs/tags/6.2.1
