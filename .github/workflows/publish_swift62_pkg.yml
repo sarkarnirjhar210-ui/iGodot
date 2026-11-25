@@ -57,8 +57,9 @@ jobs:
                   continue
               filtered_targets.append(bt)
 
-          # 1. Downgrade swift-tools-version to 5.9
-          kit = re.sub(r"//\s*swift-tools-version:.*", "// swift-tools-version: 5.9", kit, count=1)
+          # 1. Downgrade swift-tools-version to 6.0 (supports swiftLanguageModes + iPad 6.2)
+          kit = re.sub(r"//\s*swift-tools-version:.*", "// swift-tools-version: 6.0", kit, count=1)
+
 
           # 2. Remove remote SwiftGodot / SwiftGodotBinary package dependencies
           kit = re.sub(r'\.package\s*\([^)]*SwiftGodot[^)]*\)\s*,?', '', kit)
