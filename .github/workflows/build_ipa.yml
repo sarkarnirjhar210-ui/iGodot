@@ -1,0 +1,85 @@
+name: Build iGodot IPA for SideStore
+
+on:
+  push:
+    paths:
+      - 'App/**'
+      - '.github/workflows/build_ipa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-ipa:
+    runs-on: macos-15
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode Project (Swift 6.3 + SwiftGodotKit)
+        run: |
+          cat << 'EOF' > project.yml
+          name: iGodot
+          options:
+            bundleIdPrefix: com.igodot
+            deploymentTarget:
+              iOS: "17.0"
+          packages:
+            SwiftGodotKit:
+              url: https://github.com/migueldeicaza/SwiftGodotKit
+              branch: main
+          targets:
+            iGodot:
+              type: application
+              platform: iOS
+              sources:
+                - path: App
+              settings:
+                base:
+                  PRODUCT_BUNDLE_IDENTIFIER: com.igodot.editor
+                  MARKETING_VERSION: "4.7.0"
+                  CURRENT_PROJECT_VERSION: "1"
+                  TARGETED_DEVICE_FAMILY: "1,2"
+                  INFOPLIST_KEY_UIFileSharingEnabled: YES
+                  INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace: YES
+                  INFOPLIST_KEY_UILaunchScreen_Generation: YES
+                  INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+                  GENERATE_INFOPLIST_FILE: YES
+              dependencies:
+                - package: SwiftGodotKit
+                  product: SwiftGodotKit
+          EOF
+          xcodegen generate
+
+      - name: Build Unsigned iOS App
+        run: |
+          xcodebuild \
+            -project iGodot.xcodeproj \
+            -scheme iGodot \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package iGodot.ipa
+        run: |
+          mkdir -p Payload
+          cp -r build/Build/Products/Release-iphoneos/iGodot.app Payload/
+          zip -r iGodot.ipa Payload
+
+      - name: Publish iGodot.ipa to GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest-ipa -y || true
+          git push origin :refs/tags/latest-ipa || true
+          gh release create latest-ipa iGodot.ipa \
+            --title "iGodot 4.7 (SideStore IPA)" \
+            --notes "Unsigned iGodot 4.7 build for SideStore with Desktop UI & Shadow-Mapped Volumetric Fog."
