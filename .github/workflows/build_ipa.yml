@@ -15,7 +15,7 @@ jobs:
     runs-on: macos-26
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Select Latest Xcode (Swift 6.3+)
         run: |
@@ -77,11 +77,13 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             build
 
-      - name: Package iGodot.ipa
+      - name: Package & Verify iGodot.ipa
         run: |
+          rm -rf Payload iGodot.ipa
           mkdir -p Payload
-          cp -r build/Build/Products/Release-iphoneos/iGodot.app Payload/
-          zip -r iGodot.ipa Payload
+          ditto build/Build/Products/Release-iphoneos/iGodot.app Payload/iGodot.app
+          zip -qry iGodot.ipa Payload
+          zip -T iGodot.ipa
 
       - name: Publish iGodot.ipa to GitHub Releases
         env:
@@ -91,4 +93,4 @@ jobs:
           git push origin :refs/tags/latest-ipa || true
           gh release create latest-ipa iGodot.ipa \
             --title "iGodot 4.7 (SideStore IPA)" \
-            --notes "Unsigned iGodot 4.7 build for SideStore/LiveContainer with Desktop UI & Shadow-Mapped Volumetric Fog."
+            --notes "Verified unsigned iGodot 4.7 build for LiveContainer/SideStore."
