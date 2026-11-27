@@ -69,7 +69,6 @@ jobs:
           echo "Linking static library: $LIB_PATH"
           cp "$LIB_PATH" build_ios/libgodot.a
 
-          # Generate 1024x1024 App Icon from official Godot icon.png
           sips -z 1024 1024 icon.png --out build_ios/Assets.xcassets/AppIcon.appiconset/icon_1024.png
           cat << 'EOF' > build_ios/Assets.xcassets/Contents.json
           { "info": { "author": "xcode", "version": 1 } }
@@ -169,6 +168,19 @@ jobs:
           rm -rf Payload GodotEditor.ipa
           mkdir -p Payload
           ditto build_ios/derived/Build/Products/Release-iphoneos/GodotEditor.app Payload/GodotEditor.app
+
+          # Embed loose PNG icons + Info.plist keys for LiveContainer icon detection
+          sips -z 180 180 icon.png --out Payload/GodotEditor.app/AppIcon60x60@3x.png
+          sips -z 152 152 icon.png --out Payload/GodotEditor.app/AppIcon76x76@2x.png
+          PLIST="Payload/GodotEditor.app/Info.plist"
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleIcons" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleIcons~ipad" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons dict" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons:CFBundlePrimaryIcon dict" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles:0 string AppIcon60x60" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles:1 string AppIcon76x76" "$PLIST"
+
           zip -qry GodotEditor.ipa Payload
           zip -T GodotEditor.ipa
 
