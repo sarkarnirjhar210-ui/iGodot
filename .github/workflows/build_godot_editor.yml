@@ -65,7 +65,15 @@ jobs:
           LIB_PATH=$(ls bin/libgodot.ios*.a | head -n 1)
           echo "Linking static library: $LIB_PATH"
           cp "$LIB_PATH" build_ios/libgodot.a
-          echo '// Dummy file for XcodeGen C++ linking' > build_ios/src/dummy.mm
+
+          cat << 'EOF' > build_ios/src/dummy.mm
+          void godot_apple_embedded_plugins_initialize() {}
+          void godot_apple_embedded_plugins_deinitialize() {}
+          EOF
+
+          cat << 'EOF' > build_ios/src/dummy.swift
+          import Foundation
+          EOF
 
           cat << 'EOF' > build_ios/project.yml
           name: GodotEditor
@@ -85,6 +93,7 @@ jobs:
                   MARKETING_VERSION: "4.7.2"
                   CURRENT_PROJECT_VERSION: "1"
                   TARGETED_DEVICE_FAMILY: "1,2"
+                  SWIFT_VERSION: "5.0"
                   GENERATE_INFOPLIST_FILE: YES
                   INFOPLIST_KEY_UIFileSharingEnabled: YES
                   INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace: YES
