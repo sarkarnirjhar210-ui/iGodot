@@ -149,13 +149,13 @@ jobs:
           zip -T GodotEditor.ipa
 
       - name: Publish GodotEditor.ipa to GitHub Releases
-        working-directory: godot
+        working-directory: igodot
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="editor-${{ inputs.godot_version || '4.7.2-stable' }}"
           gh release delete "$TAG" -y || true
           git push origin ":refs/tags/$TAG" || true
-          gh release create "$TAG" GodotEditor.ipa \
+          gh release create "$TAG" ../godot/GodotEditor.ipa \
             --title "iGodot Native Editor (${{ inputs.godot_version || '4.7.2-stable' }})" \
             --notes "Unsigned native Godot C++ target=editor IPA for LiveContainer."
