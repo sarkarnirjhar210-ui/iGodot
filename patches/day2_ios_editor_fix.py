@@ -16,7 +16,7 @@ for p in Path("editor").rglob("editor_settings.cpp"):
 os_unix_cpp = Path("drivers/unix/os_unix.cpp")
 text = os_unix_cpp.read_text()
 pattern = re.compile(r'(Error\s+OS_Unix::create_process\s*\([^)]*\)\s*\{)')
-inject_os = r"""\1
+inject_os = r"""
 #ifdef IOS_ENABLED
 	{
 		String proj_path;
@@ -43,7 +43,7 @@ inject_os = r"""\1
 				CharString flag_file = (String(home) + "/Documents/.igodot_launch_project").utf8();
 				FILE *f = fopen(flag_file.get_data(), "w");
 				if (f) {
-					String payload = (is_editor ? "EDITOR\n" : "GAME\n") + proj_path + "\n" + scene_path + "\n";
+					String payload = String(is_editor ? "EDITOR\n" : "GAME\n") + proj_path + "\n" + scene_path + "\n";
 					CharString cs = payload.utf8();
 					fwrite(cs.get_data(), 1, cs.length(), f);
 					fclose(f);
@@ -55,7 +55,7 @@ inject_os = r"""\1
 #endif"""
 
 if ".igodot_launch_project" not in text:
-    new_text, count = pattern.subn(inject_os, text, count=1)
+    new_text, count = pattern.subn(lambda m: m.group(1) + inject_os, text, count=1)
     if count == 0:
         raise RuntimeError("Could not find OS_Unix::create_process in drivers/unix/os_unix.cpp")
     os_unix_cpp.write_text(new_text)
@@ -65,7 +65,7 @@ if ".igodot_launch_project" not in text:
 main_cpp = Path("main/main.cpp")
 text = main_cpp.read_text()
 anchor = "List<String> args;"
-inject_main = """List<String> args;
+inject_main = r"""List<String> args;
 #ifdef IOS_ENABLED
 	{
 		const char *home = getenv("HOME");
@@ -106,11 +106,11 @@ if st_cpp.exists():
     text = st_cpp.read_text()
     if "_exit(p_exit_code)" not in text:
         q_pattern = re.compile(r'(void\s+SceneTree::quit\s*\(\s*int\s+p_exit_code\s*\)\s*\{)')
-        q_inject = r"""\1
+        q_inject = r"""
 #ifdef IOS_ENABLED
 	_exit(p_exit_code);
 #endif"""
-        new_text, count = q_pattern.subn(q_inject, text, count=1)
+        new_text, count = q_pattern.subn(lambda m: m.group(1) + q_inject, text, count=1)
         if count > 0:
             st_cpp.write_text("#ifdef IOS_ENABLED\n#include <unistd.h>\n#endif\n" + new_text)
             print("Patched SceneTree::quit() for clean iOS exit")
