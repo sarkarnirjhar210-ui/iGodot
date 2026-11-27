@@ -64,10 +64,29 @@ jobs:
       - name: Build Unsigned GodotEditor.app via XcodeGen
         working-directory: godot
         run: |
-          mkdir -p build_ios/src
+          mkdir -p build_ios/src build_ios/Assets.xcassets/AppIcon.appiconset
           LIB_PATH=$(ls bin/libgodot.ios*.a | head -n 1)
           echo "Linking static library: $LIB_PATH"
           cp "$LIB_PATH" build_ios/libgodot.a
+
+          # Generate 1024x1024 App Icon from official Godot icon.png
+          sips -z 1024 1024 icon.png --out build_ios/Assets.xcassets/AppIcon.appiconset/icon_1024.png
+          cat << 'EOF' > build_ios/Assets.xcassets/Contents.json
+          { "info": { "author": "xcode", "version": 1 } }
+          EOF
+          cat << 'EOF' > build_ios/Assets.xcassets/AppIcon.appiconset/Contents.json
+          {
+            "images": [
+              {
+                "filename": "icon_1024.png",
+                "idiom": "universal",
+                "platform": "ios",
+                "size": "1024x1024"
+              }
+            ],
+            "info": { "author": "xcode", "version": 1 }
+          }
+          EOF
 
           cat << 'EOF' > build_ios/src/dummy.mm
           void godot_apple_embedded_plugins_initialize() {}
@@ -90,6 +109,7 @@ jobs:
               platform: iOS
               sources:
                 - path: src
+                - path: Assets.xcassets
               settings:
                 base:
                   PRODUCT_BUNDLE_IDENTIFIER: com.igodot.nativeeditor
@@ -97,6 +117,7 @@ jobs:
                   CURRENT_PROJECT_VERSION: "1"
                   TARGETED_DEVICE_FAMILY: "1,2"
                   SWIFT_VERSION: "5.0"
+                  ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
                   GENERATE_INFOPLIST_FILE: YES
                   INFOPLIST_KEY_UIFileSharingEnabled: YES
                   INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace: YES
