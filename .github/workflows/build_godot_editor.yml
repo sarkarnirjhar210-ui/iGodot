@@ -42,9 +42,11 @@ jobs:
           TAG="${{ inputs.godot_version || '4.7.2-stable' }}"
           git clone --depth 1 --branch "$TAG" https://github.com/godotengine/godot.git godot
 
-      - name: Apply Day 1 iOS Editor Patch
+      - name: Apply iOS Editor Patches
         working-directory: godot
-        run: python3 ../igodot/patches/day1_ios_editor.py
+        run: |
+          python3 ../igodot/patches/day1_ios_editor.py
+          python3 ../igodot/patches/day2_ios_editor_fix.py
 
       - name: Compile Godot Editor Static Library (iOS arm64 + Metal)
         working-directory: godot
