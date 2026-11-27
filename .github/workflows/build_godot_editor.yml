@@ -47,6 +47,7 @@ jobs:
         run: |
           python3 ../igodot/patches/day1_ios_editor.py
           python3 ../igodot/patches/day2_ios_editor_fix.py
+          python3 ../igodot/patches/day3_touch_viewport.py
 
       - name: Compile Godot Editor Static Library (iOS arm64 + Metal)
         working-directory: godot
