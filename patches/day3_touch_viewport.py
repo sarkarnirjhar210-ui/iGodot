@@ -5,7 +5,7 @@ import re
 for ds_cpp in [Path("servers/display/display_server.cpp"), Path("servers/display_server.cpp")]:
     if ds_cpp.exists():
         text = ds_cpp.read_text()
-        if "IOS_ENABLED" not in text or "Mouse is not supported" in text:
+        if "Mouse is not supported by this display server." in text:
             patched = re.sub(
                 r'([ \t]*WARN_PRINT[^\n]*"Mouse is not supported by this display server\."[^\n]*\n)',
                 r'#ifndef IOS_ENABLED\n\1#endif\n',
@@ -52,30 +52,37 @@ for p in Path("editor").rglob("node_3d_editor_plugin.cpp"):
 					}
 				}
 
-				// 2-finger pan
-				Vector2 rel = sd->get_relative() * 0.5f;
-				if (camera) {
-					Transform3D cam_xform = camera->get_global_transform();
-					real_t pan_scale = MAX(cursor.distance, 0.5f) * 0.0018f;
-					cursor.pos -= cam_xform.basis.get_column(0) * rel.x * pan_scale;
-					cursor.pos += cam_xform.basis.get_column(1) * rel.y * pan_scale;
-				}
+				// 2-finger pan (Shift + Middle-drag)
+				Ref<InputEventMouseMotion> mm;
+				mm.instantiate();
+				mm->set_position(sd->get_position());
+				mm->set_relative(sd->get_relative() * 0.5f);
+				mm->set_button_mask(MouseButtonMask::MIDDLE);
+				mm->set_shift_pressed(true);
+				_sinput(mm);
 
 				// 2-finger pinch-to-zoom
 				real_t prev_dist = prev_pos.distance_to(other_pos);
 				real_t curr_dist = sd->get_position().distance_to(other_pos);
 				if (prev_dist > 10.0f && curr_dist > 10.0f) {
-					real_t factor = prev_dist / curr_dist;
-					cursor.distance = CLAMP(cursor.distance * factor, 0.05f, 4000.0f);
+					Ref<InputEventMagnifyGesture> mg;
+					mg.instantiate();
+					mg->set_position((sd->get_position() + other_pos) * 0.5f);
+					mg->set_factor(curr_dist / prev_dist);
+					_sinput(mg);
 				}
 
 				surface->accept_event();
 				return;
 			} else if (igodot_touches.size() == 1 && _edit.mode == Node3DEditor::TRANSFORM_NONE) {
-				// 1-finger orbit (only when not dragging a transform gizmo)
-				Vector2 rel = sd->get_relative();
-				cursor.y_rot += -rel.x * 0.005f;
-				cursor.x_rot = CLAMP(cursor.x_rot + (-rel.y * 0.005f), -1.54f, 1.54f);
+				// 1-finger orbit (Middle-drag when not dragging a gizmo)
+				Ref<InputEventMouseMotion> mm;
+				mm.instantiate();
+				mm->set_position(sd->get_position());
+				mm->set_relative(sd->get_relative());
+				mm->set_button_mask(MouseButtonMask::MIDDLE);
+				_sinput(mm);
+
 				surface->accept_event();
 				return;
 			}
