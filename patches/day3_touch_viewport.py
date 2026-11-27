@@ -96,7 +96,6 @@ input_cpp = Path("core/input/input.cpp")
 if input_cpp.exists():
     text = input_cpp.read_text()
     if "igodot_lp" not in text:
-        # Insert state struct right after the last #include
         includes = list(re.finditer(r'^#include\s+[^\n]+\n', text, re.MULTILINE))
         if not includes:
             raise RuntimeError("Could not find #include in core/input/input.cpp")
@@ -116,8 +115,8 @@ static IGodotLongPressState igodot_lp;
 """
         text = text[:insert_pos] + lp_state + text[insert_pos:]
 
-        # Track touch press/release/drag in Input::parse_input_event
-        parse_pat = re.compile(r'(void\s+Input::parse_input_event\s*\(\s*const\s+Ref<InputEvent>\s*&\s*p_event\s*\)\s*\{)')
+        # Track touch press/release/drag in Input::parse_input_event (flexible signature match)
+        parse_pat = re.compile(r'(void\s+Input::parse_input_event\s*\([^)]*\)\s*\{)', re.DOTALL)
         parse_inj = r"""\1
 #ifdef IOS_ENABLED
 	{
@@ -146,7 +145,7 @@ static IGodotLongPressState igodot_lp;
 #endif"""
         text, c1 = parse_pat.subn(parse_inj, text, count=1)
 
-        # Fire right-click in Input::flush_buffered_events (runs every frame, before any lock)
+        # Fire right-click in Input::flush_buffered_events
         flush_pat = re.compile(r'(void\s+Input::flush_buffered_events\s*\(\s*\)\s*\{)')
         flush_inj = r"""\1
 #ifdef IOS_ENABLED
