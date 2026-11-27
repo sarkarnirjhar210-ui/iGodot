@@ -115,8 +115,8 @@ static IGodotLongPressState igodot_lp;
 """
         text = text[:insert_pos] + lp_state + text[insert_pos:]
 
-        # Track touch press/release/drag in Input::parse_input_event (flexible signature match)
-        parse_pat = re.compile(r'(void\s+Input::parse_input_event\s*\([^)]*\)\s*\{)', re.DOTALL)
+        # Track touch press/release/drag in Input::_parse_input_event_impl (takes standard Ref<InputEvent>)
+        parse_pat = re.compile(r'(void\s+Input::_parse_input_event_impl\s*\([^)]*\)\s*\{)', re.DOTALL)
         parse_inj = r"""\1
 #ifdef IOS_ENABLED
 	{
@@ -159,7 +159,7 @@ static IGodotLongPressState igodot_lp;
 		mb_cancel->set_pressed(false);
 		mb_cancel->set_position(igodot_lp.start_pos);
 		mb_cancel->set_global_position(igodot_lp.start_pos);
-		parse_input_event(mb_cancel);
+		parse_input_event(Ref<InputEvent>(mb_cancel));
 
 		Ref<InputEventMouseButton> mb_down;
 		mb_down.instantiate();
@@ -168,7 +168,7 @@ static IGodotLongPressState igodot_lp;
 		mb_down->set_pressed(true);
 		mb_down->set_position(igodot_lp.start_pos);
 		mb_down->set_global_position(igodot_lp.start_pos);
-		parse_input_event(mb_down);
+		parse_input_event(Ref<InputEvent>(mb_down));
 
 		Ref<InputEventMouseButton> mb_up;
 		mb_up.instantiate();
@@ -176,7 +176,7 @@ static IGodotLongPressState igodot_lp;
 		mb_up->set_pressed(false);
 		mb_up->set_position(igodot_lp.start_pos);
 		mb_up->set_global_position(igodot_lp.start_pos);
-		parse_input_event(mb_up);
+		parse_input_event(Ref<InputEvent>(mb_up));
 	}
 #endif"""
         text, c2 = flush_pat.subn(flush_inj, text, count=1)
