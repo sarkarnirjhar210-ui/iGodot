@@ -84,3 +84,18 @@ if anchor in text and ".igodot_launch_project" not in text:
     text = "#include <stdio.h>\n#include <stdlib.h>\n" + text.replace(anchor, inject_main, 1)
     main_cpp.write_text(text)
     print("Patched main/main.cpp to auto-boot selected project on iOS")
+
+# 4. Patch SceneTree::quit() so tapping Quit exits cleanly on iOS instead of freezing
+st_cpp = Path("scene/main/scene_tree.cpp")
+if st_cpp.exists():
+    text = st_cpp.read_text()
+    if "_exit(p_exit_code)" not in text:
+        q_pattern = re.compile(r'(void\s+SceneTree::quit\s*\(\s*int\s+p_exit_code\s*\)\s*\{)')
+        q_inject = r"""\1
+#ifdef IOS_ENABLED
+	_exit(p_exit_code);
+#endif"""
+        new_text, count = q_pattern.subn(q_inject, text, count=1)
+        if count > 0:
+            st_cpp.write_text("#ifdef IOS_ENABLED\n#include <unistd.h>\n#endif\n" + new_text)
+            print("Patched SceneTree::quit() for clean iOS exit")
