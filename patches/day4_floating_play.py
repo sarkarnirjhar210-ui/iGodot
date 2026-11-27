@@ -15,6 +15,8 @@ for p in Path("editor").rglob("editor_run_bar.cpp"):
     insert_pos = includes[-1].end()
     extra_headers = """
 #ifdef IOS_ENABLED
+#include "core/config/engine.h"
+#include "core/input/input_map.h"
 #include "core/io/resource_loader.h"
 #include "core/object/callable_mp.h"
 #include "core/object/script_language.h"
@@ -30,7 +32,7 @@ for p in Path("editor").rglob("editor_run_bar.cpp"):
     text = text[:insert_pos] + extra_headers + text[insert_pos:]
 
     pattern = re.compile(r'(void\s+EditorRunBar::play_current_scene\s*\([^)]*\)\s*\{)')
-    inject = r"""\1
+    inject = r"""
 #ifdef IOS_ENABLED
 	{
 		Node *edited = EditorNode::get_singleton()->get_edited_scene();
@@ -40,6 +42,9 @@ for p in Path("editor").rglob("editor_run_bar.cpp"):
 			if (Node *old_win = root->get_node_or_null(NodePath("IGodotFloatingPlay"))) {
 				old_win->queue_free();
 			}
+
+			// Ensure project InputMap actions (WASD, jump, sprint, etc.) are loaded
+			InputMap::get_singleton()->load_from_project_settings();
 
 			PanelContainer *win = memnew(PanelContainer);
 			win->set_name("IGodotFloatingPlay");
@@ -68,6 +73,8 @@ for p in Path("editor").rglob("editor_run_bar.cpp"):
 			svc->set_stretch(true);
 			svc->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 			svc->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+			svc->set_focus_mode(Control::FOCUS_ALL);
+			svc->set_mouse_filter(Control::MOUSE_FILTER_STOP);
 			vbox->add_child(svc);
 
 			SubViewport *vp = memnew(SubViewport);
@@ -76,24 +83,31 @@ for p in Path("editor").rglob("editor_run_bar.cpp"):
 			vp->set_handle_input_locally(true);
 			svc->add_child(vp);
 
+			root->add_child(win);
+
 			Ref<PackedScene> packed = ResourceLoader::load(scene_path, "PackedScene", ResourceFormatLoader::CACHE_MODE_IGNORE);
 			if (packed.is_valid()) {
 				bool prev_scripting = ScriptServer::is_scripting_enabled();
+				bool prev_editor_hint = Engine::get_singleton()->is_editor_hint();
 				ScriptServer::set_scripting_enabled(true);
+				Engine::get_singleton()->set_editor_hint(false);
+
 				Node *inst = packed->instantiate();
-				ScriptServer::set_scripting_enabled(prev_scripting);
 				if (inst) {
 					vp->add_child(inst);
 				}
+
+				Engine::get_singleton()->set_editor_hint(prev_editor_hint);
+				ScriptServer::set_scripting_enabled(prev_scripting);
 			}
 
-			root->add_child(win);
+			svc->grab_focus();
 			return;
 		}
 	}
 #endif"""
 
-    new_text, count = pattern.subn(inject, text, count=1)
+    new_text, count = pattern.subn(lambda m: m.group(1) + inject, text, count=1)
     if count > 0:
         p.write_text(new_text)
         print(f"Patched in-editor floating Play window in {p}")
