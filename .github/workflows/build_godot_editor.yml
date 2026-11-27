@@ -1,0 +1,105 @@
+name: Build Native Godot Editor IPA (iOS)
+
+on:
+  workflow_dispatch:
+    inputs:
+      godot_version:
+        description: 'Godot Git tag (e.g. 4.7.2-stable or 4.8-stable)'
+        required: true
+        default: '4.7.2-stable'
+
+permissions:
+  contents: write
+
+jobs:
+  build-godot-editor:
+    runs-on: macos-26
+    steps:
+      - name: Checkout iGodot Patches
+        uses: actions/checkout@v5
+        with:
+          path: igodot
+
+      - name: Select Latest Xcode
+        run: |
+          LATEST_XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -n 1)
+          echo "Using $LATEST_XCODE"
+          sudo xcode-select -s "$LATEST_XCODE/Contents/Developer"
+
+      - name: Install Build Tools (SCons + ccache)
+        run: brew install scons ccache
+
+      - name: Cache ccache (Speeds Up Future Rebuilds)
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: godot-ios-editor-${{ inputs.godot_version || '4.7.2-stable' }}-${{ github.run_id }}
+          restore-keys: |
+            godot-ios-editor-${{ inputs.godot_version || '4.7.2-stable' }}-
+
+      - name: Clone Official Godot Source
+        run: |
+          TAG="${{ inputs.godot_version || '4.7.2-stable' }}"
+          git clone --depth 1 --branch "$TAG" https://github.com/godotengine/godot.git godot
+
+      - name: Apply Day 1 iOS Editor Patch
+        working-directory: godot
+        run: python3 ../igodot/patches/day1_ios_editor.py
+
+      - name: Compile Godot Editor Static Library (iOS arm64 + Metal)
+        working-directory: godot
+        env:
+          PATH: /opt/homebrew/opt/ccache/libexec:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+          CCACHE_MAXSIZE: 4G
+        run: |
+          scons platform=ios target=editor arch=arm64 \
+            metal=yes vulkan=no \
+            optimize=speed debug_symbols=no \
+            -j$(sysctl -n hw.ncpu)
+          ls -lh bin/
+
+      - name: Build Unsigned GodotEditor.app via Xcode
+        working-directory: godot
+        run: |
+          mkdir -p build_ios
+          cp -R misc/dist/ios_xcode/* build_ios/
+          cp bin/libgodot.ios.editor.arm64.a build_ios/godot_ios.a
+
+          # Replace placeholder tokens in Godot's iOS Xcode template
+          sed -i '' 's/\$binary/godot_ios/g; s/\$name/iGodot Editor/g; s/\$bundle_identifier/com.igodot.nativeeditor/g; s/\$short_version/4.7.2/g; s/\$version/1/g; s/\$targeted_device_family/1,2/g' \
+            build_ios/godot_ios.xcodeproj/project.pbxproj \
+            build_ios/godot_ios-Info.plist || true
+
+          xcodebuild \
+            -project build_ios/godot_ios.xcodeproj \
+            -scheme godot_ios \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build_ios/derived \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package & Verify GodotEditor.ipa
+        working-directory: godot
+        run: |
+          APP_PATH=$(find build_ios/derived/Build/Products/Release-iphoneos -name "*.app" -maxdepth 1 | head -n 1)
+          echo "Found app: $APP_PATH"
+          rm -rf Payload GodotEditor.ipa
+          mkdir -p Payload
+          ditto "$APP_PATH" "Payload/GodotEditor.app"
+          zip -qry GodotEditor.ipa Payload
+          zip -T GodotEditor.ipa
+
+      - name: Publish GodotEditor.ipa to GitHub Releases
+        working-directory: godot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="editor-${{ inputs.godot_version || '4.7.2-stable' }}"
+          gh release delete "$TAG" -y || true
+          git push origin ":refs/tags/$TAG" || true
+          gh release create "$TAG" GodotEditor.ipa \
+            --title "iGodot Native Editor (${{ inputs.godot_version || '4.7.2-stable' }})" \
+            --notes "Unsigned native Godot C++ target=editor IPA for LiveContainer."
