@@ -18,10 +18,14 @@ for p in Path("editor").rglob("project_manager.cpp"):
     replacement = """#ifdef IOS_ENABLED
 	{
 		String proj_path;
-		for (int i = 0; i < args.size() - 1; i++) {
-			if (args[i] == "--path") {
-				proj_path = args[i + 1];
+		bool take_next = false;
+		for (const String &arg : args) {
+			if (take_next) {
+				proj_path = arg;
 				break;
+			}
+			if (arg == "--path") {
+				take_next = true;
 			}
 		}
 		if (!proj_path.is_empty()) {
