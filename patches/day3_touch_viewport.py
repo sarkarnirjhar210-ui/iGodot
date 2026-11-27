@@ -74,7 +74,7 @@ for p in Path("editor").rglob("node_3d_editor_plugin.cpp"):
 
 				surface->accept_event();
 				return;
-			} else if (igodot_touches.size() == 1 && _edit.mode == Node3DEditor::TRANSFORM_NONE) {
+			} else if (igodot_touches.size() == 1 && _edit.mode == TRANSFORM_NONE) {
 				// 1-finger orbit (Middle-drag when not dragging a gizmo)
 				Ref<InputEventMouseMotion> mm;
 				mm.instantiate();
