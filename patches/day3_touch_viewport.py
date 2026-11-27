@@ -16,7 +16,20 @@ for ds_cpp in [Path("servers/display/display_server.cpp"), Path("servers/display
                 print(f"Silenced iOS mouse warning spam in {ds_cpp}")
         break
 
-# 2. Add Xogot-style 1-finger orbit + 2-finger pan & pinch-zoom to 3D viewport
+# 2. Hide legacy tablet virtual joysticks in 3D viewport by default
+for p in Path("editor").rglob("node_3d_editor_plugin.cpp"):
+    text = p.read_text()
+    # Disable any touch/virtual joystick visibility helper if present
+    patched_joy = re.sub(
+        r'(touch_joystick_[a-zA-Z0-9_]*->set_visible\s*\()[^)]+(\))',
+        r'\1false\2',
+        text,
+    )
+    if patched_joy != text:
+        p.write_text(patched_joy)
+        print(f"Disabled legacy virtual joysticks in {p}")
+
+# 3. Add Xogot-style 1-finger orbit + 2-finger pan & pinch-zoom (without breaking CSG/mesh gizmos)
 patched_3d = False
 for p in Path("editor").rglob("node_3d_editor_plugin.cpp"):
     text = p.read_text()
@@ -56,15 +69,15 @@ for p in Path("editor").rglob("node_3d_editor_plugin.cpp"):
 				Ref<InputEventMouseMotion> mm;
 				mm.instantiate();
 				mm->set_position(sd->get_position());
-				mm->set_relative(sd->get_relative() * 0.5f);
+				mm->set_relative(sd->get_relative() * 1.2f);
 				mm->set_button_mask(MouseButtonMask::MIDDLE);
 				mm->set_shift_pressed(true);
 				_sinput(mm);
 
-				// 2-finger pinch-to-zoom
+				// 2-finger pinch-to-zoom (only when finger distance meaningfully changes)
 				real_t prev_dist = prev_pos.distance_to(other_pos);
 				real_t curr_dist = sd->get_position().distance_to(other_pos);
-				if (prev_dist > 10.0f && curr_dist > 10.0f) {
+				if (prev_dist > 10.0f && curr_dist > 10.0f && Math::abs(curr_dist - prev_dist) > 1.5f) {
 					Ref<InputEventMagnifyGesture> mg;
 					mg.instantiate();
 					mg->set_position((sd->get_position() + other_pos) * 0.5f);
@@ -74,8 +87,8 @@ for p in Path("editor").rglob("node_3d_editor_plugin.cpp"):
 
 				surface->accept_event();
 				return;
-			} else if (igodot_touches.size() == 1 && _edit.mode == TRANSFORM_NONE) {
-				// 1-finger orbit (Middle-drag when not dragging a gizmo)
+			} else if (igodot_touches.size() == 1 && _edit.mode == TRANSFORM_NONE && _edit.gizmo.is_null()) {
+				// 1-finger orbit (only when not dragging a transform or mesh/CSG resize gizmo)
 				Ref<InputEventMouseMotion> mm;
 				mm.instantiate();
 				mm->set_position(sd->get_position());
