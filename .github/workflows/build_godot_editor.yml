@@ -26,8 +26,8 @@ jobs:
           echo "Using $LATEST_XCODE"
           sudo xcode-select -s "$LATEST_XCODE/Contents/Developer"
 
-      - name: Install Build Tools (SCons + ccache)
-        run: brew install scons ccache
+      - name: Install Build Tools (SCons + ccache + XcodeGen)
+        run: brew install scons ccache xcodegen
 
       - name: Cache ccache (Speeds Up Future Rebuilds)
         uses: actions/cache@v4
@@ -58,24 +58,73 @@ jobs:
             -j$(sysctl -n hw.ncpu)
           ls -lh bin/
 
-      - name: Build Unsigned GodotEditor.app via Xcode
+      - name: Build Unsigned GodotEditor.app via XcodeGen
         working-directory: godot
         run: |
-          mkdir -p build_ios
-          cp -R misc/dist/ios_xcode/* build_ios/
-          cp bin/libgodot.ios.editor.arm64.a build_ios/godot_ios.a
+          mkdir -p build_ios/src
+          LIB_PATH=$(ls bin/libgodot.ios*.a | head -n 1)
+          echo "Linking static library: $LIB_PATH"
+          cp "$LIB_PATH" build_ios/libgodot.a
+          echo '// Dummy file for XcodeGen C++ linking' > build_ios/src/dummy.mm
 
-          # Replace placeholder tokens in Godot's iOS Xcode template
-          sed -i '' 's/\$binary/godot_ios/g; s/\$name/iGodot Editor/g; s/\$bundle_identifier/com.igodot.nativeeditor/g; s/\$short_version/4.7.2/g; s/\$version/1/g; s/\$targeted_device_family/1,2/g' \
-            build_ios/godot_ios.xcodeproj/project.pbxproj \
-            build_ios/godot_ios-Info.plist || true
+          cat << 'EOF' > build_ios/project.yml
+          name: GodotEditor
+          options:
+            bundleIdPrefix: com.igodot
+            deploymentTarget:
+              iOS: "17.0"
+          targets:
+            GodotEditor:
+              type: application
+              platform: iOS
+              sources:
+                - path: src
+              settings:
+                base:
+                  PRODUCT_BUNDLE_IDENTIFIER: com.igodot.nativeeditor
+                  MARKETING_VERSION: "4.7.2"
+                  CURRENT_PROJECT_VERSION: "1"
+                  TARGETED_DEVICE_FAMILY: "1,2"
+                  GENERATE_INFOPLIST_FILE: YES
+                  INFOPLIST_KEY_UIFileSharingEnabled: YES
+                  INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace: YES
+                  INFOPLIST_KEY_UILaunchScreen_Generation: YES
+                  INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+                  OTHER_LDFLAGS:
+                    - "-ObjC"
+                    - "-force_load"
+                    - "$(PROJECT_DIR)/libgodot.a"
+                    - "-lc++"
+                    - "-lz"
+              dependencies:
+                - sdk: Foundation.framework
+                - sdk: UIKit.framework
+                - sdk: Metal.framework
+                - sdk: MetalKit.framework
+                - sdk: QuartzCore.framework
+                - sdk: CoreGraphics.framework
+                - sdk: CoreMotion.framework
+                - sdk: AudioToolbox.framework
+                - sdk: AVFoundation.framework
+                - sdk: CoreAudio.framework
+                - sdk: GameController.framework
+                - sdk: CoreHaptics.framework
+                - sdk: CoreMedia.framework
+                - sdk: Security.framework
+                - sdk: SystemConfiguration.framework
+                - sdk: WebKit.framework
+                - sdk: StoreKit.framework
+                - sdk: OpenGLES.framework
+          EOF
 
+          cd build_ios
+          xcodegen generate
           xcodebuild \
-            -project build_ios/godot_ios.xcodeproj \
-            -scheme godot_ios \
+            -project GodotEditor.xcodeproj \
+            -scheme GodotEditor \
             -configuration Release \
             -sdk iphoneos \
-            -derivedDataPath build_ios/derived \
+            -derivedDataPath derived \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -84,11 +133,9 @@ jobs:
       - name: Package & Verify GodotEditor.ipa
         working-directory: godot
         run: |
-          APP_PATH=$(find build_ios/derived/Build/Products/Release-iphoneos -name "*.app" -maxdepth 1 | head -n 1)
-          echo "Found app: $APP_PATH"
           rm -rf Payload GodotEditor.ipa
           mkdir -p Payload
-          ditto "$APP_PATH" "Payload/GodotEditor.app"
+          ditto build_ios/derived/Build/Products/Release-iphoneos/GodotEditor.app Payload/GodotEditor.app
           zip -qry GodotEditor.ipa Payload
           zip -T GodotEditor.ipa
 
